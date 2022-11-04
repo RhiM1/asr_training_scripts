@@ -9,7 +9,7 @@ from tqdm import tqdm
 import numpy as np
 import wandb
 from torch.optim.lr_scheduler import CyclicLR
-from model_utils import load_checkpoint, load_nemo_checkpoint, load_sc_model as load_model, write_to_log, \
+from model_utils import load_checkpoint, load_nemo_checkpoint, load_ex_sc_model as load_model, write_to_log, \
     squeeze_batch_and_to_device, save_checkpoint, draw_text, load_schedular_data, save_schedular_data
 
 from contextlib import nullcontext

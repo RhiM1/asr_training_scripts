@@ -16,8 +16,8 @@ from os.path import join
 import subprocess
 import re
 
-AMI_DEFAULT = "/store/store1/data/ami/"
-SCLITE_PATH = '/exp/exp1/acp21rjf/SCTK/bin/sclite'
+AMI_DEFAULT = "/home/acp20rm/data/ami/"
+# SCLITE_PATH = '/exp/exp1/acp21rjf/SCTK/bin/sclite'
 
 RANDOM_WORDS = ['Swimming', 'Popcorn', 'Dinosoar', 'Rectangle', 'WuhWuh', 'Handle', 'Infiltration', 'Spring', 'Bee', 'Boop', 'Beep','Boat', 'Bicycle', 'Car', 'Cat', 'Dog', 'Elephant', 'Fish', 'Giraffe', 'Trigger','Horse', 'Lion', 'Star','Monkey', 'Pig', 'Bond', 'Rabbit', 'Dime', 'Protect', 'Sheep', 'Tiger', 'Train', 'Truck', 'Brain','Whale', 'Zebra', 'Studio', 'Dough', 'Probably', 'Horizantal', 'Tough', 'Huge', 'Tiny', 'Diseased', 'Knees', 'Clown', 'Blough', 'Woop','Skrrt', 'Skrrt', 'High', 'Low', 'Blow', 'Preaching', 'Street', 'Crazy', 'Hazy', 'Lazy', 'Striking', 'Dragon', 'Boom', 'Abdomen', 'Chips', 'Nation', 'Lord', 'Drop', 'HmmHmm', 'Lava', 'Rhymes']
 
@@ -272,6 +272,24 @@ class MinimalDataset(torch.utils.data.Dataset):
         "token_lens": token_lens,
     }
 
+    
+class MinimalExDataset(torch.utils.data.Dataset):
+  def __init__(self, tokenizer: TokenizerCollator):
+    self.tokenizer = tokenizer
+
+  def __getitem__(self, cuts: CutSet, labels, test_lens) -> dict:
+    # cuts = cuts.sort_by_duration()
+    audios, audio_lens = collate_audio(cuts)
+    tokens, token_lens = self.tokenizer(cuts)
+    return {
+        "audio": audios,
+        "audio_lens": audio_lens,
+        "tokens": tokens,
+        "token_lens": token_lens,
+        "ex_labels": labels,
+        "test_lens": test_lens
+    }
+
 class EvaluationDataset(torch.utils.data.Dataset):
     '''
     Dataset for use when evaluating the model
@@ -295,6 +313,13 @@ def eval_dataloader(cuts, batch_size:int, shuffle:bool=False):
     dataloader = torch.utils.data.DataLoader(dataset, sampler=sampler)
     return dataloader
 
+    
+def eval_ex_dataloader(cuts, labels, test_lens, batch_size:int, shuffle:bool=False):
+    dataset = EvaluationExDataset()
+    sampler = SimpleExCutSampler(cuts, labels, test_lens, shuffle = shuffle, max_samples=batch_size)
+    dataloader = torch.utils.data.DataLoader(dataset, sampler = sampler)
+    return dataloader
+
 def load_dataloader(cuts, tokenizer, max_duration:int, shuffle:bool=True):
     '''
     Example usage:
@@ -307,6 +332,24 @@ def load_dataloader(cuts, tokenizer, max_duration:int, shuffle:bool=True):
     '''
     collator = TokenizerCollator(tokenizer)
     dataset = MinimalDataset(collator)
+    sampler = SimpleCutSampler(cuts, max_duration=max_duration, shuffle=shuffle)
+    dataloader = torch.utils.data.DataLoader(dataset, sampler=sampler)
+    
+    return dataloader
+
+
+def load_ex_dataloader(cuts, labels, tokenizer, max_duration:int, shuffle:bool=True):
+    '''
+    Example usage:
+    - Obtain corpus
+    \n
+    ami_dict = load_corpus()
+    train_dl = load_dataloader(ami_dict['train'], tokenizer, max_duration=360, shuffle=True)
+    \n
+    - tokenizer should be a sentencepiece tokenizer
+    '''
+    collator = TokenizerCollator(tokenizer)
+    dataset = MinimalExDataset(collator, labels, )
     sampler = SimpleCutSampler(cuts, max_duration=max_duration, shuffle=shuffle)
     dataloader = torch.utils.data.DataLoader(dataset, sampler=sampler)
     

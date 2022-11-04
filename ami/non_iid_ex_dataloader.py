@@ -65,25 +65,27 @@ def prepare_samples(meetings, max_duration=20, concat_samples=False, split_speak
 
     return samples
     
-class ___Minimal_IID_Dataset(torch.utils.data.Dataset):
-  def __init__(self, tokenizer: TokenizerCollator):
-    self.tokenizer = tokenizer
+# class ___Minimal_IID_Dataset(torch.utils.data.Dataset):
+#   def __init__(self, tokenizer: TokenizerCollator):
+#     self.tokenizer = tokenizer
 
-  def __getitem__(self, cuts: CutSet) -> dict:
-    audios, audio_lens = collate_audio(cuts)
-    tokens, token_lens = self.tokenizer(cuts)
-    return {
-        "audio": audios,
-        "audio_lens": audio_lens,
-        "tokens": tokens,
-        "token_lens": token_lens,
-    }
+#   def __getitem__(self, cuts: CutSet) -> dict:
+#     audios, audio_lens = collate_audio(cuts)
+#     tokens, token_lens = self.tokenizer(cuts)
+#     return {
+#         "audio": audios,
+#         "audio_lens": audio_lens,
+#         "tokens": tokens,
+#         "token_lens": token_lens,
+#     }
 
 
-class Minimal_IID_Dataset(torch.utils.data.Dataset):
-  def __init__(self, tokenizer: TokenizerCollator, all_cuts):
+class Minimal_IID_ExDataset(torch.utils.data.Dataset):
+  def __init__(self, tokenizer: TokenizerCollator, all_cuts, labels, labels_lens):
     self.tokenizer = tokenizer
     self.all_cuts = all_cuts
+    self.all_labels = labels
+    self.all_labels_lens = labels_lens
     
   def __len__(self):
     return len(self.all_cuts)
@@ -95,13 +97,17 @@ class Minimal_IID_Dataset(torch.utils.data.Dataset):
     return {
         "audio": audios,
         "audio_lens": audio_lens,
+        "labels": self.all_labels[idx],
+        "labels_lens": self.all_labels_lens[idx],
         "tokens": tokens,
         "token_lens": token_lens,
     }
 
-class Minimal_Evaluation_IID_Dataset(torch.utils.data.Dataset):
-  def __init__(self, all_cuts, return_speaker=False):
+class Minimal_Evaluation_IID_ExDataset(torch.utils.data.Dataset):
+  def __init__(self, all_cuts, labels, labels_lens, return_speaker=False):
     self.all_cuts = all_cuts
+    self.all_labels = labels
+    self.all_labels_lens = labels_lens
     self.return_speaker = return_speaker
     
   def __len__(self):
@@ -113,6 +119,8 @@ class Minimal_Evaluation_IID_Dataset(torch.utils.data.Dataset):
     out = {
         "audio": audios,
         "audio_lens": audio_lens,
+        "labels": self.all_labels[idx],
+        "labels_lens": self.all_labels_lens[idx],
         "text": [tools.remove_multiple_spaces(" ".join(supervision.text for supervision in cut.supervisions)) for cut in cuts],
     }
     if self.return_speaker:
@@ -120,8 +128,10 @@ class Minimal_Evaluation_IID_Dataset(torch.utils.data.Dataset):
 
     return out
 
-def get_eval_dataloader(
+def get_eval_ex_dataloader(
     split,
+    labels,
+    labels_lens,
     max_duration=25,
     return_speaker=False,
     batch_size=1,
@@ -143,21 +153,26 @@ def get_eval_dataloader(
         single_speaker_with_gaps=single_speaker_with_gaps
     )
     return torch.utils.data.DataLoader(
-        Minimal_Evaluation_IID_Dataset(samples, return_speaker=return_speaker),
+        Minimal_Evaluation_IID_ExDataset(samples, labels, labels_lens, return_speaker=return_speaker),
         batch_size=batch_size,
         shuffle=False,
-        collate_fn=collate_batch_fn_eval
+        collate_fn=collate_ex_batch_fn_eval
     )
 
 
-def collate_batch_fn_eval(batch):
+def collate_ex_batch_fn_eval(batch):
     #raise NotImplementedError()
 
+    print([el['audio'].shape for el in batch])
+    print([el['labels'].shape for el in batch])
     max_len = max(el['audio'].shape[1] for el in batch)
-    # pad audio to max length
+    max_label_len = max(el['labels'].shape[1] for el in batch)
+    print(max_label_len, max(batch['labels_len']))
+    # pad audio and labels to max length
     for el in batch:
         el['audio'] = torch.nn.functional.pad(el['audio'], (0, max_len - el['audio'].shape[1]))
         el['segment_lens'] = torch.LongTensor([el['audio'].shape[0]])
+        el['labels'] = torch.nn.function.pad(el['labels'], (0, max_label_len - el['labels'].shape[1]))
     # concatenate everything
     collated = {}
     for key in batch[0].keys():
@@ -168,7 +183,7 @@ def collate_batch_fn_eval(batch):
 
     return collated
 
-def collate_batch_fn(batch):
+def collate_ex_batch_fn(batch):
     #raise NotImplementedError()
     
     max_len = max(el['audio'].shape[1] for el in batch)
@@ -187,7 +202,7 @@ def collate_batch_fn(batch):
        
 
 
-def get_data_loader(
+def get_ex_data_loader(
         split, 
         tokenizer=None, 
         shuffle=True, 
@@ -221,13 +236,13 @@ def get_data_loader(
     if tokenizer == None:
         tokenizer = tools.load_tokenizer()
     tokencollator = TokenizerCollator(tokenizer)
-    dataset = Minimal_IID_Dataset(tokencollator, samples)
+    dataset = Minimal_IID_ExDataset(tokencollator, samples)
 
     return torch.utils.data.DataLoader(dataset, 
         shuffle=shuffle, 
         num_workers=num_workers, 
         pin_memory=pinned_memory,
         batch_size=batch_size,
-        collate_fn=collate_batch_fn 
+        collate_fn=collate_ex_batch_fn 
     )
 

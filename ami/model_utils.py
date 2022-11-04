@@ -5,6 +5,7 @@ import torch
 from nemo.collections.asr.models.ctc_bpe_models import EncDecCTCModelBPE
 from nemo.collections.asr.models.rnnt_bpe_models import EncDecRNNTBPEModel
 from nemo.collections.asr.models.scctc_bpe_models import EncDecSCCTCModelBPE
+from nemo.collections.asr.models.ex_scctc_bpe_models import EncDecExSCCTCModelBPE
 import os
 import numpy as np
 from omegaconf.omegaconf import OmegaConf
@@ -70,6 +71,18 @@ def load_sc_model(args):
         print(f'Loaded model from config file {args.model_config}')
         return model
 
+def load_ex_sc_model(args):
+    print(args.load_pretrained)
+    if args.load_pretrained == True:
+        model = EncDecExSCCTCModelBPE.from_pretrained(args.pretrained)
+        if args.tokenizer != '':
+            model.change_vocabulary(new_tokenizer_dir=args.tokenizer, new_tokenizer_type='bpe')
+        return model
+    else:
+        cfg = OmegaConf.load(args.model_config)
+        model = EncDecExSCCTCModelBPE(cfg['model'])
+        print(f'Loaded model from config file {args.model_config}')
+        return model
 
 def load_transducer_model(args):
     print(args.load_pretrained)

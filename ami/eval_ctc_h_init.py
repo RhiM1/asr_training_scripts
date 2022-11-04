@@ -44,6 +44,18 @@ def evaluate(args, model, corpus, decoder):
     model.to(device)
     model.eval()
 
+    # save_labels = args.save_labels
+    if args.save_labels == '':
+        save_labels = False
+    else:
+        save_labels = True
+        strLabelFile = args.save_labels + args.split + "_labels.pt"
+        strLabelsLensFile = args.save_labels + args.split + "_labels_lens.pt"
+        labels = []
+        # labels = torch.zeros((len(corpus), 1), dtype = torch.long)
+        labels_lens = torch.zeros(len(corpus), dtype = torch.long)
+
+
     hyps = []
     refs = []
     speakers = []
@@ -62,9 +74,13 @@ def evaluate(args, model, corpus, decoder):
         single_speaker_with_gaps=args.single_speaker_with_gaps,
     )
 
+    # i = 0
+    done_so_far = 0
+    i = 0
     pbar = tqdm(dataloader, total=len(dataloader))
     for batch_num, batch in enumerate(pbar):
         audios = batch['audio'].reshape(-1, batch['audio'].shape[-1]).to(device)
+        
       
         speaker_ids = ["_".join(el[0]) for el in batch['speakers']]
 
@@ -85,19 +101,57 @@ def evaluate(args, model, corpus, decoder):
         log_probs, _, encoded_len = model_out[:3]
         additional_outputs = model_out[-1]
 
+        
+
         save_attention_information(args, batch_num, additional_outputs, speaker_ids, targets)
+
+        if save_labels:
+            batch_labels = torch.argmax(log_probs, dim = 2)
+            labels.extend(batch_label[0:labels_len] for batch_label, labels_len in zip(batch_labels, encoded_len))
+            # batch_shape = batch_labels.size()
+            # print("log_probs size:", log_probs.size(), ", batch_shape:", batch_shape, ", labels size:", labels.size())
+            # if batch_shape[1] > labels.size()[1]:
+            #     labels = torch.nn.functional.pad(labels, (0, batch_shape[1] - labels.size()[1], 0, 0))
+            # else:
+            #     batch_labels = torch.nn.functional.pad(batch_labels, (0, labels.size()[1] - batch_shape[1], 0, 0))
+            # labels[done_so_far:done_so_far + batch_shape[0]] = torch.argmax(log_probs)
+            labels_lens[done_so_far:done_so_far + len(encoded_len)] = encoded_len
+            done_so_far += len(encoded_len)
+            if i < 10:
+                print(labels[done_so_far - 1].size())
+                print(labels_lens[done_so_far - 1])
+                print(len(labels), len(labels_lens), done_so_far)
+                # print(labels)
+                # print(labels_lens)
+                i += 1
+
+
 
         log_probs = log_probs.detach().cpu().numpy()
    
         decoded = decode_lm(log_probs, decoder, beam_width=args.beam_size, encoded_lengths=encoded_len)
 
-        print(f'Decoded: {" - ".join([el for el in decoded])}\n')
-        print(f'Targets: {" - ".join([el for el in targets])}')
+        # print(f'Decoded: {" - ".join([el for el in decoded])}\n')
+        # print(f'Targets: {" - ".join([el for el in targets])}')
        
         hyps.extend(decoded)
         refs.extend(targets)
         speakers.extend(speaker_ids)
         encoded_lens.extend(encoded_len.cpu().tolist())
+        # if i < 10:
+        #     print("batch_shape:", batch_shape)
+        #     print(f'Decoded: {" - ".join([el for el in decoded])}\n')
+        #     print(f'Targets: {" - ".join([el for el in targets])}')
+        #     print("log_probs size:", np.shape(log_probs))
+        #     print("encoded_len:", encoded_len)
+        #     print("labels size:", labels.size())
+        #     print("labels_lens size:", labels_lens.size())
+        #     # print("decoded size:", decoded.size())
+        #     i += 1
+
+    if save_labels:
+        torch.save(labels, strLabelFile)
+        torch.save(labels_lens, strLabelsLensFile)
 
     if args.sclite:
         refname, hypname = tools.write_trn_files(refs=refs, hyps=hyps, speakers=speakers, encoded_lens=encoded_lens, out_dir=args.sclite_dir)
@@ -182,6 +236,7 @@ if __name__ == '__main__':
     parser.add_argument('-sclite_dir', '--sclite_dir', type=str, default='./trns')
 
     parser.add_argument('-save','--save_outputs', default='', type=str, help='save outputs to file')
+    parser.add_argument('-save_labels', default='', type=str, help='save predicted frame labels for use as exemplars')
     args = parser.parse_args()
 
     assert isfalse(args.split_speakers) or args.concat_samples, 'seperate_speakers can only be enabled if concat_samples is enabled'
