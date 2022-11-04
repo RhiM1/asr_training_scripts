@@ -17,6 +17,7 @@ import subprocess
 import re
 
 AMI_DEFAULT = "/home/acp20rm/data/ami/"
+# AMI_DEFAULT = "/store/store1/data/ami/"
 # SCLITE_PATH = '/exp/exp1/acp21rjf/SCTK/bin/sclite'
 
 RANDOM_WORDS = ['Swimming', 'Popcorn', 'Dinosoar', 'Rectangle', 'WuhWuh', 'Handle', 'Infiltration', 'Spring', 'Bee', 'Boop', 'Beep','Boat', 'Bicycle', 'Car', 'Cat', 'Dog', 'Elephant', 'Fish', 'Giraffe', 'Trigger','Horse', 'Lion', 'Star','Monkey', 'Pig', 'Bond', 'Rabbit', 'Dime', 'Protect', 'Sheep', 'Tiger', 'Train', 'Truck', 'Brain','Whale', 'Zebra', 'Studio', 'Dough', 'Probably', 'Horizantal', 'Tough', 'Huge', 'Tiny', 'Diseased', 'Knees', 'Clown', 'Blough', 'Woop','Skrrt', 'Skrrt', 'High', 'Low', 'Blow', 'Preaching', 'Street', 'Crazy', 'Hazy', 'Lazy', 'Striking', 'Dragon', 'Boom', 'Abdomen', 'Chips', 'Nation', 'Lord', 'Drop', 'HmmHmm', 'Lava', 'Rhymes']
