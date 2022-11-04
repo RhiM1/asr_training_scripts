@@ -9,8 +9,10 @@ from tqdm import tqdm
 import numpy as np
 import wandb
 from torch.optim.lr_scheduler import CyclicLR
-from model_utils import load_checkpoint, load_nemo_checkpoint, load_ex_sc_model as load_model, write_to_log, \
-    squeeze_batch_and_to_device, save_checkpoint, draw_text, load_schedular_data, save_schedular_data
+from model_utils import load_checkpoint, load_nemo_checkpoint, load_sc_model, load_ex_sc_model, write_to_log, \
+    squeeze_batch_and_to_device, save_checkpoint, draw_text, load_schedular_data, save_schedular_data, \
+    get_ex_model
+
 
 from contextlib import nullcontext
 
@@ -58,18 +60,31 @@ def optimizer(model, args):
     return optimizer, schedular
 
 @torch.no_grad()
-def validate_one_epoch(model, val_dataloader, device, sanity_check=False):
+def validate_one_epoch(model, val_dataloader, device, sanity_check=False, exModel = None):
     model.eval()
     pbar = tqdm(val_dataloader, total=len(val_dataloader))
     wers = []
     losses = []
+
+    if exModel == None:
+        use_exModel = False
+    else:
+        use_exModel = True
+
     print('Evaluation epoch')
     for batch in pbar:
         input_signal, input_signal_lengths, targets, target_lengths, batch_size = squeeze_batch_and_to_device(batch, device)
         segment_lens = batch['segment_lens'].to(device)
         #pbar.update(batch_size)
+
+        if use_exModel:        
+            ex_model_out = exModel.forward(input_signal=input_signal, input_signal_length=input_signal_lengths, segment_lens=segment_lens if isfalse(args.do_not_pass_segment_lens) else None)
+            ex_log_probs, _, _ = ex_model_out[:3]
+            ex_labels = torch.argmax(ex_log_probs, dim = -1)
+            print("ex_labels:", ex_labels)
+            print("ex_labels size:", ex_labels.size())
        
-        model_out = model.forward(input_signal=input_signal, input_signal_length=input_signal_lengths, segment_lens=segment_lens if isfalse(args.do_not_pass_segment_lens) else None)
+        model_out = model.forward(input_signal=input_signal, input_signal_length=input_signal_lengths, ex_labels=ex_labels, segment_lens=segment_lens if isfalse(args.do_not_pass_segment_lens) else None)
         log_probs, interim_posteriors, encoded_len = model_out[0], model_out[1], model_out[2] #just validate with final layer
         
         if exists(interim_posteriors):
@@ -113,7 +128,7 @@ def self_distillation_kl(log_probs, iterim_posteriors, log_probs_targets, iterim
     return loss_lp + loss_ip
 
 
-def train_one_epoch(model, optim, schedular, train_dataloader, device, scaler=None, ema=None):
+def train_one_epoch(model, optim, schedular, train_dataloader, device, scaler=None, ema=None, output100 = False, exModel = None):
     model.train()
 
     losses = [] # for storing effective losses
@@ -123,6 +138,11 @@ def train_one_epoch(model, optim, schedular, train_dataloader, device, scaler=No
     autocast_device = 'cuda' if torch.cuda.is_available() else 'cpu' # for autocast if using mixed precision
 
     #torch.autograd.set_detect_anomaly(True)
+
+    if exModel == None:
+        use_exModel = False
+    else:
+        use_exModel = True
 
     for i, batch in enumerate(pbar):
         input_signal, input_signal_lengths, targets, target_lengths, batch_size = squeeze_batch_and_to_device(batch, device)
@@ -134,8 +154,15 @@ def train_one_epoch(model, optim, schedular, train_dataloader, device, scaler=No
                 'input_signal_length': input_signal_lengths,
                 'segment_lens': segment_lens if isfalse(args.do_not_pass_segment_lens) else None
             }
+            if use_exModel:        
+                ex_model_out = exModel.forward(**model_inputs) 
+                ex_log_probs, _, _ = ex_model_out[:3]
+                model_inputs['ex_labels'] = torch.argmax(ex_log_probs, dim = -1)
+
             model_out = model.forward(**model_inputs)
             log_probs, interim_posteriors, encoded_len = model_out[0], model_out[1], model_out[2] 
+
+
 
             if exists(interim_posteriors):
                 interims = torch.empty(interim_posteriors.shape[0]).to(device)
@@ -157,6 +184,12 @@ def train_one_epoch(model, optim, schedular, train_dataloader, device, scaler=No
 
 
             loss_a = loss_a / args.accumulate_gradients
+
+            if output100 and i < 100:
+                with open('log100.txt', 'a') as f:
+                    f.write(str(i) + ", " + str(loss_final.item()) + ", " + str(loss_a.item()) + "\n")
+            elif i == 100:
+                print("\n\n!!! First 100 minibatch output ready !!!\n\n")
 
             loss_iterim.append(loss_a.item())
 
@@ -197,11 +230,16 @@ def train_one_epoch(model, optim, schedular, train_dataloader, device, scaler=No
     
 
 
+
 def main(args):
-    model = load_model(args)
+    model = load_ex_sc_model(args)
+
+    exModel = get_ex_model(args)
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
+    exModel.to(device)
+    exModel.eval()
  
     ami_dict = tools.load_corpus()
     tokenizer = model.tokenizer
@@ -223,6 +261,8 @@ def main(args):
     train_dataloader, dev_dataloader = get_dl('train'), get_dl('dev')
     if args.run_test == True:
         test_dataloader = get_dl('test')
+    
+    output100 = args.output100
  
     optim, schedular = optimizer(model, args)
     save_schedular_data(args)
@@ -240,12 +280,12 @@ def main(args):
            
 
     if args.run_test == True:
-        lossval = validate_one_epoch(model, test_dataloader, device, sanity_check=False)
+        lossval = validate_one_epoch(model, test_dataloader, device, sanity_check=False, exModel=exModel)
         print(f' Test loss: {lossval}')
         write_to_log(args.log_file, f'Test loss: {lossval} checkpoint: {args.checkpoint}')
         return
     
-    validate_one_epoch(model, dev_dataloader, device, sanity_check=True) # check no crash
+    validate_one_epoch(model, dev_dataloader, device, sanity_check=True, exModel=exModel) # check no crash
 
     ema = ExponentialMovingAverage(model.parameters(), decay=0.9999) 
     scaler = GradScaler() if args.mixed_precision else None
@@ -258,11 +298,14 @@ def main(args):
 
     results = {}
     saved_checkpoints = []
+    
     for epoch_ in range(args.epochs): # todo move epoch loop to model utils as is consistent across model types
         epoch = epoch_ + epoch_prev
         #train_dataloader.sampler.set_epoch(epoch)
 
-        loss = train_one_epoch(model, optim, schedular, train_dataloader, device, scaler, ema)          
+        loss = train_one_epoch(model, optim, schedular, train_dataloader, device, scaler, ema, output100, exModel=exModel)
+        output100 = False
+
 
         try: # don't want this to crash if I accidentally delete the schedular config file
             schedular = update_schedular(args, optim, schedular) # allows changing of min n max learning rate during training
@@ -364,6 +407,13 @@ if __name__ == '__main__':
     parser.add_argument('--self_distillation', action='store_true', help='if set, will use self distillation')
 
     parser.add_argument('-wp','--wandb_project', type=str, default='deliberation-Custom_ami', help='wandb project name')
+
+    
+    parser.add_argument('--output100', action='store_true', help='if set, will use self distillation')
+    parser.add_argument('--ex_model_config', type=str, default='')
+
+    parser.add_argument('--ex_checkpoint_dir', default='', help='directory for model checkpoint for getting exemplar labels')
+    parser.add_argument('--ex_checkpoint', default='', help='model checkpoint file for getting exemplar labels')
   
 
     args = parser.parse_args()

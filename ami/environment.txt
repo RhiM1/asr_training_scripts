@@ -1,0 +1,40 @@
+conda create --name nemo-custom python=3.8
+conda activate nemo-custom
+conda install pytorch torchvision torchaudio pytorch-cuda=11.6 -c pytorch -c nvidia
+// OR //
+conda install pytorch torchvision torchaudio pytorch-cuda=11.6 -c pytorch-nightly -c nvidia
+
+git clone https://github.com/RhiM1/NeMo
+cd NeMo_rhi
+./reinstall.sh
+
+pip install lhotse
+// OR //
+git clone https://github.com/lhotse-speech/lhotse
+cd lhotse
+pip install -e '.[dev]'
+
+pip install git+https://github.com/ludvb/batchrenorm@master
+pip install entmax==1.0
+
+pip install torch-ema
+
+pip install https://github.com/kpu/kenlm/archive/master.zip
+pip install pyctcdecode
+conda install -c conda-forge torch-optimizer
+
+conda install -c conda-forge pytorch-lightning
+
+
+
+
+conda install -c conda-forge pysoundfile
+
+
+
+
+
+
+??
+conda install cffi
+pip install cpython

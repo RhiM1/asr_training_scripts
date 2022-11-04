@@ -31,6 +31,27 @@ def load_checkpoint(args, model, optim=None):
     print(f'Epoch: {epoch}, Validation loss: {val_loss}')
     return epoch, val_loss
 
+def get_ex_model(args):
+
+    ex_cfg = OmegaConf.load(args.ex_model_config)
+    exModel = EncDecSCCTCModelBPE(ex_cfg['model'])
+    print(f'Loaded ex-model from config file {args.ex_model_config}')
+    checkpoint_path = args.ex_checkpoint_dir + args.ex_checkpoint
+    print(checkpoint_path)
+    checkpoint = torch.load(checkpoint_path, map_location=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+    # print(checkpoint['model_state_dict'].keys())
+    try:
+        exModel.load_state_dict(checkpoint['model_state_dict'])
+    except Exception as e:
+        exModel.load_state_dict(checkpoint['model_state_dict'], strict=False)
+        print(f'Error loading model state_dict: {e}, loading attempted with strict=False')
+    # epoch = checkpoint['epoch'] if 'epoch' in checkpoint else 0
+    # val_loss = checkpoint['val_loss'] if 'val_loss' in checkpoint else None
+    print(f'Loaded exemplar checkpoint from {checkpoint_path}')
+    # print(f'Epoch: {epoch}, Validation loss: {val_loss}')
+    # return epoch, val_loss
+    return exModel
+
 def load_nemo_checkpoint(args, model, optim):
     checkpoint_path = args.checkpoint
     print(checkpoint_path)
