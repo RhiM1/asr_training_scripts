@@ -5,7 +5,8 @@ import torch
 from nemo.collections.asr.models.ctc_bpe_models import EncDecCTCModelBPE
 from nemo.collections.asr.models.rnnt_bpe_models import EncDecRNNTBPEModel
 from nemo.collections.asr.models.scctc_bpe_models import EncDecSCCTCModelBPE
-from nemo.collections.asr.models.ex_scctc_bpe_models import EncDecExSCCTCModelBPE
+from nemo.collections.asr.models.scctc_models import EncDecSCCTCModel
+from nemo.collections.asr.models.ex_scctc_models import EncDecExSCCTCModel
 import os
 import numpy as np
 from omegaconf.omegaconf import OmegaConf
@@ -82,26 +83,26 @@ def load_model(args):
 def load_sc_model(args):
     print(args.load_pretrained)
     if args.load_pretrained == True:
-        model = EncDecSCCTCModelBPE.from_pretrained(args.pretrained)
+        model = EncDecSCCTCModel.from_pretrained(args.pretrained)
         if args.tokenizer != '':
             model.change_vocabulary(new_tokenizer_dir=args.tokenizer, new_tokenizer_type='bpe')
         return model
     else:
         cfg = OmegaConf.load(args.model_config)
-        model = EncDecSCCTCModelBPE(cfg['model'])
+        model = EncDecSCCTCModel(cfg['model'])
         print(f'Loaded model from config file {args.model_config}')
         return model
 
 def load_ex_sc_model(args):
     print(args.load_pretrained)
     if args.load_pretrained == True:
-        model = EncDecExSCCTCModelBPE.from_pretrained(args.pretrained)
+        model = EncDecExSCCTCModel.from_pretrained(args.pretrained)
         if args.tokenizer != '':
             model.change_vocabulary(new_tokenizer_dir=args.tokenizer, new_tokenizer_type='bpe')
         return model
     else:
         cfg = OmegaConf.load(args.model_config)
-        model = EncDecExSCCTCModelBPE(cfg['model'])
+        model = EncDecExSCCTCModel(cfg['model'])
         print(f'Loaded model from config file {args.model_config}')
         return model
 
@@ -109,8 +110,8 @@ def load_transducer_model(args):
     print(args.load_pretrained)
     if args.load_pretrained == True:
         model = EncDecRNNTBPEModel.from_pretrained(args.pretrained)
-        if args.tokenizer != '':
-            model.change_vocabulary(new_tokenizer_dir=args.tokenizer, new_tokenizer_type='bpe')
+        # if args.tokenizer != '':
+        #     model.change_vocabulary(new_tokenizer_dir=args.tokenizer, new_tokenizer_type='bpe')
         return model
     else:
         cfg = OmegaConf.load(args.model_config)

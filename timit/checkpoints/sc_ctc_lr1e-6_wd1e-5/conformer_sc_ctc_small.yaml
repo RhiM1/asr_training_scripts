@@ -32,11 +32,11 @@ model:
   ctc_reduction: 'mean_batch'
   skip_nan_grad: false
 
-  # recommend small vocab size of 128 or 256 when using 4x sub-sampling
-  # you may find more detail on how to train a tokenizer at: /scripts/tokenizers/process_asr_text_tokenizer.py
-  tokenizer:
-    dir: "./tokenizer_spe_bpe_v128/" # path to directory which contains either tokenizer.model (bpe) or vocab.txt (wpe)
-    type: bpe  # Can be either bpe (SentencePiece tokenizer) or wpe (WordPiece tokenizer)
+  # # recommend small vocab size of 128 or 256 when using 4x sub-sampling
+  # # you may find more detail on how to train a tokenizer at: /scripts/tokenizers/process_asr_text_tokenizer.py
+  # tokenizer:
+  #   dir: "./tokenizer_spe_bpe_v128/" # path to directory which contains either tokenizer.model (bpe) or vocab.txt (wpe)
+  #   type: bpe  # Can be either bpe (SentencePiece tokenizer) or wpe (WordPiece tokenizer)
 
   preprocessor:
     _target_: nemo.collections.asr.modules.AudioToMelSpectrogramPreprocessor
@@ -100,8 +100,8 @@ model:
   decoder:
     _target_: nemo.collections.asr.modules.ConvASRSelfConditioningDecoder
     feat_in: null
-    num_classes: -1
-    vocabulary: []
+    num_classes: 39
+    vocabulary: ['sil', 'aa', 'ae', 'ah', 'aw', 'er', 'ay', 'b', 'ch', 'd', 'dh', 'dx', 'eh', 'l', 'm', 'n', 'ng', 'ey', 'f', 'g', 'hh', 'ih', 'iy', 'jh', 'k', 'ow', 'oy', 'p', 'r', 's', 'sh', 't', 'th', 'uh', 'uw', 'v', 'w', 'y', 'z']
     gating: false # uses a gating function rather than addition to incorporate softmax posteriors 
     reproject_type: 'linear' # linear or conv
 
@@ -113,7 +113,7 @@ model:
     # less necessity for weight_decay as we already have large augmentations with SpecAug
     # you may need weight_decay for large models, stable AMP training, small datasets, or when lower augmentations are used
     # weight decay of 0.0 with lr of 2.0 also works fine
-    weight_decay: 1e-7
+    weight_decay: 1e-5
 
     # scheduler setup
     #sched:
@@ -127,7 +127,7 @@ model:
 trainer:
   devices: -1 # number of GPUs, -1 would use all available GPUs
   num_nodes: 1
-  max_epochs: 1000
+  max_epochs: 1
   max_steps: null # computed at runtime if not set
   val_check_interval: 1.0 # Set to 0.25 to check 4 times per epoch, or an int for number of iterations
   accelerator: auto
@@ -154,7 +154,7 @@ exp_manager:
     # in case of multiple validation sets, first one is used
     monitor: "val_wer"
     mode: "min"
-    save_top_k: 5
+    save_top_k: 10
     always_save_nemo: True # saves the checkpoints as nemo files instead of PTL checkpoints
 
   # you need to set these two to True to continue the training

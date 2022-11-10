@@ -32,11 +32,11 @@ model:
   ctc_reduction: 'mean_batch'
   skip_nan_grad: false
 
-  # recommend small vocab size of 128 or 256 when using 4x sub-sampling
-  # you may find more detail on how to train a tokenizer at: /scripts/tokenizers/process_asr_text_tokenizer.py
-  tokenizer:
-    dir: "./tokenizer_spe_bpe_v128/" # path to directory which contains either tokenizer.model (bpe) or vocab.txt (wpe)
-    type: bpe  # Can be either bpe (SentencePiece tokenizer) or wpe (WordPiece tokenizer)
+  # # recommend small vocab size of 128 or 256 when using 4x sub-sampling
+  # # you may find more detail on how to train a tokenizer at: /scripts/tokenizers/process_asr_text_tokenizer.py
+  # tokenizer:
+  #   dir: "./tokenizer_spe_bpe_v128/" # path to directory which contains either tokenizer.model (bpe) or vocab.txt (wpe)
+  #   type: bpe  # Can be either bpe (SentencePiece tokenizer) or wpe (WordPiece tokenizer)
 
   preprocessor:
     _target_: nemo.collections.asr.modules.AudioToMelSpectrogramPreprocessor
@@ -100,8 +100,8 @@ model:
   decoder:
     _target_: nemo.collections.asr.modules.ConvASRSelfConditioningDecoder
     feat_in: null
-    num_classes: -1
-    vocabulary: []
+    num_classes: 39
+    vocabulary: ['sil', 'aa', 'ae', 'ah', 'aw', 'er', 'ay', 'b', 'ch', 'd', 'dh', 'dx', 'eh', 'l', 'm', 'n', 'ng', 'ey', 'f', 'g', 'hh', 'ih', 'iy', 'jh', 'k', 'ow', 'oy', 'p', 'r', 's', 'sh', 't', 'th', 'uh', 'uw', 'v', 'w', 'y', 'z']
     gating: false # uses a gating function rather than addition to incorporate softmax posteriors 
     reproject_type: 'linear' # linear or conv
 

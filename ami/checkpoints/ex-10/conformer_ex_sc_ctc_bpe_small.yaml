@@ -24,7 +24,7 @@
 # Pre-trained models of Conformer-CTC can be found here: https://docs.nvidia.com/deeplearning/nemo/user-guide/docs/en/stable/asr/results.html
 # The checkpoint of the large model trained on LibriSpeech with this recipe can be found here: https://ngc.nvidia.com/catalog/models/nvidia:nemo:stt_en_conformer_ctc_large_ls
 
-name: "Conformer-SC-CTC-BPE"
+name: "Conformer-ex-SC-CTC-BPE"
 
 model:
   sample_rate: 16000
@@ -62,7 +62,7 @@ model:
     time_width: 0.05
 
   encoder:
-    _target_: nemo.collections.asr.modules.SelfConditionedConformerEncoder
+    _target_: nemo.collections.asr.modules.SelfConditionedExemplarConformerEncoder
     feat_in: ${model.preprocessor.features}
     feat_out: -1 # you may set it if you need different output size other than the default d_model
     n_layers: 16
@@ -146,7 +146,7 @@ trainer:
   benchmark: false # needs to be false for models with variable-length speech input as it slows down training
 
 exp_manager:
-  exp_dir: "/exp/exp1/acp20rm/deliberation/Models/Nemo/Conformer/checkpoints"
+  exp_dir: "/exp/exp1/acp21rjf/deliberation/Models/Nemo/Conformer/checkpoints"
   name: ${name}
   create_tensorboard_logger: true
   create_checkpoint_callback: false

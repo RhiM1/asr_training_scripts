@@ -146,7 +146,7 @@ trainer:
   benchmark: false # needs to be false for models with variable-length speech input as it slows down training
 
 exp_manager:
-  exp_dir: "/exp/exp1/acp20rm/deliberation/Models/Nemo/Conformer/checkpoints"
+  exp_dir: "/exp/exp1/acp21rjf/deliberation/Models/Nemo/Conformer/checkpoints"
   name: ${name}
   create_tensorboard_logger: true
   create_checkpoint_callback: false

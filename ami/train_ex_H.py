@@ -81,8 +81,8 @@ def validate_one_epoch(model, val_dataloader, device, sanity_check=False, exMode
             ex_model_out = exModel.forward(input_signal=input_signal, input_signal_length=input_signal_lengths, segment_lens=segment_lens if isfalse(args.do_not_pass_segment_lens) else None)
             ex_log_probs, _, _ = ex_model_out[:3]
             ex_labels = torch.argmax(ex_log_probs, dim = -1)
-            print("ex_labels:", ex_labels)
-            print("ex_labels size:", ex_labels.size())
+        else:
+            ex_labels = None
        
         model_out = model.forward(input_signal=input_signal, input_signal_length=input_signal_lengths, ex_labels=ex_labels, segment_lens=segment_lens if isfalse(args.do_not_pass_segment_lens) else None)
         log_probs, interim_posteriors, encoded_len = model_out[0], model_out[1], model_out[2] #just validate with final layer
@@ -233,15 +233,23 @@ def train_one_epoch(model, optim, schedular, train_dataloader, device, scaler=No
 
 def main(args):
     model = load_ex_sc_model(args)
-
-    exModel = get_ex_model(args)
-    
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    if args.ex_model_config == '':
+        print("!!! Not getting exemplar labels !!!")
+        exModel = None
+    else:
+        exModel = get_ex_model(args)
+        exModel.to(device)
+        exModel.eval()
+        print("!!! Getting exemplar labels from previous model !!!")
+    
     model.to(device)
-    exModel.to(device)
-    exModel.eval()
  
     ami_dict = tools.load_corpus()
+    print("Train len:", len(ami_dict['train']))
+    print("Dev len:", len(ami_dict['dev']))
+    print("Test len:", len(ami_dict['test']))
     tokenizer = model.tokenizer
  
     get_dl = lambda split: non_iid_dataloader.get_data_loader(
@@ -317,7 +325,7 @@ def main(args):
                 print(e, '\n') # todo move all this to update_schedular it looks ugly :P
 
         with ema.average_parameters(): # evaluate using ema of the parameters
-            vloss = validate_one_epoch(model, dev_dataloader, device, sanity_check=False)
+            vloss = validate_one_epoch(model, dev_dataloader, device, sanity_check=False, exModel=exModel)
 
         if args.wandb:
             wandb.log({'val_loss': vloss, 'epoch': epoch})

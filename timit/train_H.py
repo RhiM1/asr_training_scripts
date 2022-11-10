@@ -11,6 +11,7 @@ import wandb
 from torch.optim.lr_scheduler import CyclicLR
 from model_utils import load_checkpoint, load_nemo_checkpoint, load_sc_model as load_model, write_to_log, \
     squeeze_batch_and_to_device, save_checkpoint, draw_text, load_schedular_data, save_schedular_data
+from lhotse.dataset.sampling.simple import SimpleCutSampler
 
 from contextlib import nullcontext
 
@@ -49,7 +50,7 @@ def optimizer(model, args):
     if args.optimizer_type == 'adamw':
         optimizer = torch.optim.AdamW(model.parameters(), betas=(0.9, 0.98), weight_decay=1e-6, lr=args.min_lr)
     elif args.optimizer_type == 'madgrad':
-        optimizer = torch_optimizer.MADGRAD(model.parameters(), lr=args.min_lr, momentum=0.9, weight_decay=1e-6, eps=1e-6)
+        optimizer = torch_optimizer.MADGRAD(model.parameters(), lr=args.min_lr, momentum=0.9, weight_decay=args.weight_decay, eps=1e-6)
     else:
         raise ValueError(f'Unknown optimizer type: {args.optimizer_type}, implemented optimizers: {implemented_optimizers}')
 
@@ -60,20 +61,18 @@ def optimizer(model, args):
 @torch.no_grad()
 def validate_one_epoch(model, val_dataloader, device, sanity_check=False):
     model.eval()
-    pbar = tqdm(val_dataloader, total=len(val_dataloader))
+    # pbar = tqdm(val_dataloader, total=len(val_dataloader))
+    pbar = tqdm(val_dataloader, total=len(val_dataloader.sampler.data_source))
     wers = []
     losses = []
     print('Evaluation epoch')
-    i = 0
     for batch in pbar:
         input_signal, input_signal_lengths, targets, target_lengths, batch_size = squeeze_batch_and_to_device(batch, device)
-        segment_lens = batch['segment_lens'].to(device)
-        if i == 0:
-            print(f'input_signal_lengths: {input_signal_lengths}')
-            print(f'segment_lens: {segment_lens}')
+        # segment_lens = batch['segment_lens'].to(device)
         #pbar.update(batch_size)
        
-        model_out = model.forward(input_signal=input_signal, input_signal_length=input_signal_lengths, segment_lens=segment_lens if isfalse(args.do_not_pass_segment_lens) else None)
+        # model_out = model.forward(input_signal=input_signal, input_signal_length=input_signal_lengths, segment_lens=segment_lens if isfalse(args.do_not_pass_segment_lens) else None)
+        model_out = model.forward(input_signal=input_signal, input_signal_length=input_signal_lengths)
         log_probs, interim_posteriors, encoded_len = model_out[0], model_out[1], model_out[2] #just validate with final layer
         
         if exists(interim_posteriors):
@@ -123,20 +122,21 @@ def train_one_epoch(model, optim, schedular, train_dataloader, device, scaler=No
     losses = [] # for storing effective losses
     loss_iterim = [] # for storing loss of each accumulation step
     print('Training epoch')
-    pbar = tqdm(train_dataloader, total=len(train_dataloader))
+    # pbar = tqdm(train_dataloader, total=len(train_dataloader))
+    pbar = tqdm(train_dataloader, total=len(train_dataloader.sampler.data_source))
     autocast_device = 'cuda' if torch.cuda.is_available() else 'cpu' # for autocast if using mixed precision
 
     #torch.autograd.set_detect_anomaly(True)
 
     for i, batch in enumerate(pbar):
         input_signal, input_signal_lengths, targets, target_lengths, batch_size = squeeze_batch_and_to_device(batch, device)
-        segment_lens = batch['segment_lens'].to(device)
+        # segment_lens = batch['segment_lens'].to(device)
 
         with torch.autocast(device_type=autocast_device) if exists(scaler) else nullcontext(): # for mixed precision
             model_inputs = {
                 'input_signal': input_signal,
                 'input_signal_length': input_signal_lengths,
-                'segment_lens': segment_lens if isfalse(args.do_not_pass_segment_lens) else None
+                # 'segment_lens': segment_lens if isfalse(args.do_not_pass_segment_lens) else None
             }
             model_out = model.forward(**model_inputs)
             log_probs, interim_posteriors, encoded_len = model_out[0], model_out[1], model_out[2] 
@@ -202,34 +202,74 @@ def train_one_epoch(model, optim, schedular, train_dataloader, device, scaler=No
 
 
 def main(args):
+    
     model = load_model(args)
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
  
-    ami_dict = tools.load_corpus()
-    tokenizer = model.tokenizer
+    timit_dict = tools.load_corpus()
+    print(f'Train len: {len(timit_dict["TRAIN"])}')
+    print(f'Dev len: {len(timit_dict["DEV"])}')
+    print(f'Test len: {len(timit_dict["TEST"])}')
+
+    # tokens = tools.get_timit_tokens(timit_dict['TEST'])
+    # quit()
+
+
+
+    # tokenizer = model.tokenizer
  
-    get_dl = lambda split: non_iid_dataloader.get_data_loader(
-        split=ami_dict[split], 
-        tokenizer=tokenizer, 
-        shuffle=True, 
-        max_duration=args.micro_batch_duration, 
-        num_workers=args.num_workers, 
-        batch_size=args.micro_batch_number, 
-        concat_samples=args.concat_samples,
-        split_speakers=args.split_speakers,
-        gap=args.gap,
-        speaker_gap=args.speaker_gap,
-        single_speaker_with_gaps=args.single_speaker_with_gaps,
+    # get_dl = lambda split: non_iid_dataloader.get_data_loader(
+    #     split=timit_dict[split], 
+    #     # tokenizer=tokenizer, 
+    #     shuffle=True, 
+    #     max_duration=args.micro_batch_duration, 
+    #     num_workers=args.num_workers, 
+    #     batch_size=args.micro_batch_number, 
+    #     concat_samples=args.concat_samples,
+    #     split_speakers=args.split_speakers,
+    #     gap=args.gap,
+    #     speaker_gap=args.speaker_gap,
+    #     single_speaker_with_gaps=args.single_speaker_with_gaps,
+    # )
+
+    # test_dataset = tools.MinimalTimitDataset()
+    # test_sampler = SimpleCutSampler(timit_dict['TEST'], max_duration=args.micro_batch_duration, shuffle=False)
+    # # test_sampler = SimpleCutSampler(timit_dict['TEST'], max_samples=10, shuffle=False)
+    # test_dataloader = torch.utils.data.DataLoader(test_dataset, sampler=test_sampler)
+
+    print(args.micro_batch_duration)
+
+
+
+    dev_dataloader = tools.load_timit_dataloader(
+        cuts = timit_dict["DEV"],
+        max_duration = args.micro_batch_duration,
+        shuffle = True
     )
 
-    train_dataloader, dev_dataloader = get_dl('train'), get_dl('dev')
+    train_dataloader = tools.load_timit_dataloader(
+        cuts = timit_dict["TRAIN"],
+        max_duration = args.micro_batch_duration,
+        shuffle = True
+    )
+
+
+    # train_dataloader, dev_dataloader = get_dl('train'), get_dl('dev')
+
     if args.run_test == True:
-        test_dataloader = get_dl('test')
+        # test_dataloader = get_dl('test')    
+        test_dataloader = tools.load_timit_dataloader(
+            cuts = timit_dict["TEST"],
+            max_duration = args.micro_batch_duration,
+            shuffle = True
+        )
  
+
     optim, schedular = optimizer(model, args)
     save_schedular_data(args)
+
 
     epoch_prev = 0
     if args.checkpoint != '':
@@ -340,6 +380,7 @@ if __name__ == '__main__':
     parser.add_argument('--min_lr', type=float, default=1e-5)
     parser.add_argument('--max_lr', type=float, default=8e-3)
     parser.add_argument('--step_size', type=int, default=400)
+    parser.add_argument('--weight_decay', type=float, default=1e-6)
 
     parser.add_argument('--schedular_data', type=str, default='./schedular_data_ctc.json')
     parser.add_argument('--wandb', action='store_false')
@@ -351,7 +392,7 @@ if __name__ == '__main__':
     parser.add_argument('--clip_gradients_value', type=float, default=10.0)
 
     parser.add_argument('--micro_batch_duration', type=int, default=45, help='batch size for non-i.i.d micro batches')
-    parser.add_argument('--micro_batch_number', type=int, default=1, help='number of i.i.d micro batches per mini-batch')
+    parser.add_argument('--micro_batch_number', type=int, default=None, help='number of i.i.d micro batches per mini-batch')
 
     parser.add_argument('--optimizer_type', type=str, default='madgrad', help='type of optimizer to use')
     parser.add_argument('--concat_samples', action='store_true', help='if set, will concat cuts from same meeting instead of stacking them')
@@ -383,9 +424,9 @@ if __name__ == '__main__':
     if os.path.exists(args.log_file) == True:
         write_to_log(args.log_file, f'\n{"-"*50}\n---- New run ----\n{"-"*50}\n')
 
-    if os.path.exists(args.schedular_data) == True:
-        print(f'A schedular data with the name {args.schedular_data} already exists, please delete it if you want to start a new run')
-        exit()
+    # if os.path.exists(args.schedular_data) == True:
+    #     print(f'A schedular data with the name {args.schedular_data} already exists, please delete it if you want to start a new run')
+    #     exit()
 
     if args.load_pretrained == True:
         if args.pretrained == '':
